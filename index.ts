@@ -50,6 +50,7 @@ type PluginResult = {
 };
 
 const DEFAULT_TIMEOUT_MS = 30_000;
+const COMMENT_EVENTS = new Set(["comment.created", "comment.edited"]);
 
 const strings = (value: unknown): string[] =>
   Array.isArray(value)
@@ -102,7 +103,7 @@ export default class LlmModerationPlugin {
   constructor(private readonly context: HookContext) {}
 
   async handleEvent(event: EventEnvelope): Promise<PluginResult> {
-    if (event.type !== "comment.created") {
+    if (!COMMENT_EVENTS.has(event.type)) {
       return { success: true, result: { skipped: "unsupported-event" } };
     }
     if (event.payload?.author?.isBot) {
@@ -125,7 +126,7 @@ export default class LlmModerationPlugin {
     const commentId = event.payload?.commentId || event.payload?.context?.comment?.id;
     const body = event.payload?.commentText || event.payload?.context?.comment?.text;
     if (!commentId || !body?.trim()) {
-      return { success: false, error: "comment.created payload is missing comment content", retryable: false };
+      return { success: false, error: `${event.type} payload is missing comment content`, retryable: false };
     }
 
     const serverRules: ServiceRule[] = serverRulesEnabled
