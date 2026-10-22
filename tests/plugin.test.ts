@@ -25,6 +25,30 @@ const event = (
   },
 });
 
+const discussionEvent = (overrides: Record<string, unknown> = {}) => ({
+  type: "discussionChannel.created",
+  payload: {
+    discussionId: "discussion-1",
+    discussionTitle: "A suspicious offer",
+    discussionBody: "Buy now",
+    author: { isBot: false },
+    context: {
+      server: { rules: serverRules },
+      channel: {
+        uniqueName: "cats",
+        rules: forumRules,
+        pluginEnabled: true,
+      },
+      discussion: {
+        id: "discussion-1",
+        title: "A suspicious offer",
+        body: "Buy now",
+      },
+    },
+    ...overrides,
+  },
+});
+
 const context = (overrides: Record<string, unknown> = {}) => ({
   settings: {
     serviceUrl: "https://moderation.example",
@@ -101,6 +125,48 @@ describe("LLM moderation plugin", () => {
       contentId: "comment-1",
       selectedServerRules: ["No spam"],
     }));
+  });
+
+  it("moderates a discussion and reports the discussion with canonical rules", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(response({
+      violations: [
+        { scope: "server", ruleId: "server:0" },
+        { scope: "channel", ruleId: "channel:0" },
+      ],
+      recommendation: "remove",
+      confidence: 0.94,
+      rationale: "Promotional discussion",
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const ctx = context();
+
+    const result = await new Plugin(ctx).handleEvent(discussionEvent());
+
+    expect(result).toEqual({ success: true, result: { reported: true, confidence: 0.94 } });
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).content).toEqual({
+      type: "discussion",
+      id: "discussion-1",
+      title: "A suspicious offer",
+      body: "Buy now",
+    });
+    expect(ctx.reportContentAsBot).toHaveBeenCalledWith(expect.objectContaining({
+      contentType: "discussion",
+      contentId: "discussion-1",
+      selectedServerRules: ["No spam"],
+      selectedForumRules: ["Stay on topic"],
+    }));
+  });
+
+  it("skips bot-authored discussions", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await new Plugin(context()).handleEvent(
+      discussionEvent({ author: { isBot: true } })
+    );
+
+    expect(result).toEqual({ success: true, result: { skipped: "bot-authored" } });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("skips unsupported events without calling the service", async () => {
@@ -345,7 +411,7 @@ describe("LLM moderation plugin", () => {
 
     expect([unconfigured, missingContent]).toEqual([
       { success: false, error: "Moderation service is not configured", retryable: false },
-      { success: false, error: "comment.created payload is missing comment content", retryable: false },
+      { success: false, error: "comment.created payload is missing content", retryable: false },
     ]);
   });
 

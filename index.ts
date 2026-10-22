@@ -21,6 +21,9 @@ type EventEnvelope = {
   payload?: {
     commentId?: string;
     commentText?: string;
+    discussionId?: string;
+    discussionTitle?: string;
+    discussionBody?: string;
     author?: { isBot?: boolean };
     context?: {
       server?: { rules?: unknown };
@@ -30,6 +33,7 @@ type EventEnvelope = {
         pluginEnabled?: boolean;
       };
       comment?: { id?: string; text?: string } | null;
+      discussion?: { id?: string; title?: string; body?: string } | null;
     };
   };
 };
@@ -50,7 +54,11 @@ type PluginResult = {
 };
 
 const DEFAULT_TIMEOUT_MS = 30_000;
-const COMMENT_EVENTS = new Set(["comment.created", "comment.edited"]);
+const CONTENT_EVENTS = new Set([
+  "comment.created",
+  "comment.edited",
+  "discussionChannel.created",
+]);
 
 const strings = (value: unknown): string[] =>
   Array.isArray(value)
@@ -103,7 +111,7 @@ export default class LlmModerationPlugin {
   constructor(private readonly context: HookContext) {}
 
   async handleEvent(event: EventEnvelope): Promise<PluginResult> {
-    if (!COMMENT_EVENTS.has(event.type)) {
+    if (!CONTENT_EVENTS.has(event.type)) {
       return { success: true, result: { skipped: "unsupported-event" } };
     }
     if (event.payload?.author?.isBot) {
@@ -123,10 +131,19 @@ export default class LlmModerationPlugin {
       return { success: true, result: { skipped: "server-rule-checking-off" } };
     }
 
-    const commentId = event.payload?.commentId || event.payload?.context?.comment?.id;
-    const body = event.payload?.commentText || event.payload?.context?.comment?.text;
-    if (!commentId || !body?.trim()) {
-      return { success: false, error: `${event.type} payload is missing comment content`, retryable: false };
+    const isDiscussion = event.type === "discussionChannel.created";
+    const contentType = isDiscussion ? "discussion" : "comment";
+    const contentId = isDiscussion
+      ? event.payload?.discussionId || event.payload?.context?.discussion?.id
+      : event.payload?.commentId || event.payload?.context?.comment?.id;
+    const title = isDiscussion
+      ? event.payload?.discussionTitle || event.payload?.context?.discussion?.title
+      : undefined;
+    const body = isDiscussion
+      ? event.payload?.discussionBody || event.payload?.context?.discussion?.body
+      : event.payload?.commentText || event.payload?.context?.comment?.text;
+    if (!contentId || !body?.trim() || (isDiscussion && !title?.trim())) {
+      return { success: false, error: `${event.type} payload is missing content`, retryable: false };
     }
 
     const serverRules: ServiceRule[] = serverRulesEnabled
@@ -172,7 +189,9 @@ export default class LlmModerationPlugin {
             : {}),
         },
         body: JSON.stringify({
-          content: { type: "comment", id: commentId, body },
+          content: isDiscussion
+            ? { type: contentType, id: contentId, title, body }
+            : { type: contentType, id: contentId, body },
           rules,
           policy: {
             model: typeof settings.model === "string" ? settings.model : undefined,
@@ -247,8 +266,8 @@ export default class LlmModerationPlugin {
       verdict.rationale.trim(),
     ].filter(Boolean).join(" ");
     await this.context.reportContentAsBot({
-      contentType: "comment",
-      contentId: commentId,
+      contentType,
+      contentId,
       reportText,
       selectedForumRules,
       selectedServerRules,
