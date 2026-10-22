@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import Plugin from "../index.js";
 
 const serverRules = ["No spam", "No threats"];
+const forumRules = ["Stay on topic", "No spoilers"];
 const event = (overrides: Record<string, unknown> = {}) => ({
   type: "comment.created",
   payload: {
@@ -10,7 +11,11 @@ const event = (overrides: Record<string, unknown> = {}) => ({
     author: { isBot: false },
     context: {
       server: { rules: serverRules },
-      channel: { uniqueName: "cats" },
+      channel: {
+        uniqueName: "cats",
+        rules: forumRules,
+        pluginEnabled: false,
+      },
       comment: { id: "comment-1", text: "Buy now" },
     },
     ...overrides,
@@ -62,6 +67,7 @@ describe("LLM moderation plugin", () => {
       violations: [
         { scope: "server", ruleId: "unknown" },
         { scope: "channel", ruleId: "server:0" },
+        { scope: "server", ruleId: "channel:0" },
       ],
       recommendation: "remove",
       confidence: 0.99,
@@ -69,7 +75,12 @@ describe("LLM moderation plugin", () => {
     })));
     const ctx = context();
 
-    const result = await new Plugin(ctx).handleEvent(event());
+    const result = await new Plugin(ctx).handleEvent(event({
+      context: {
+        server: { rules: serverRules },
+        channel: { uniqueName: "cats", rules: forumRules, pluginEnabled: true },
+      },
+    }));
 
     expect({ result, reports: ctx.reportContentAsBot.mock.calls.length }).toEqual({
       result: { success: true, result: { reported: false, confidence: 0.99, validCitationCount: 0 } },
@@ -80,7 +91,12 @@ describe("LLM moderation plugin", () => {
   it.each([
     ["bot-authored", event({ author: { isBot: true } })],
     ["server-rule-checking-off", event()],
-    ["no-server-rules", event({ context: { server: { rules: [] }, channel: { uniqueName: "cats" } } })],
+    ["no-applicable-rules", event({
+      context: {
+        server: { rules: [] },
+        channel: { uniqueName: "cats", rules: [], pluginEnabled: false },
+      },
+    })],
   ])("skips %s comments without calling the service", async (reason, input) => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
@@ -94,6 +110,116 @@ describe("LLM moderation plugin", () => {
       result: { success: true, result: { skipped: reason } },
       calls: 0,
     });
+  });
+
+  it.each([
+    ["all_forums", "", true, ["server", "channel"]],
+    ["all_forums", "", false, ["server"]],
+    ["off", "", true, ["channel"]],
+    ["allowlist", "dogs", true, ["channel"]],
+    ["allowlist", "cats,dogs", false, ["server"]],
+  ])(
+    "sends one applicable rule set for mode=%s allowlist=%s channelEnabled=%s",
+    async (mode, allowlist, pluginEnabled, expectedScopes) => {
+      const fetchMock = vi.fn().mockResolvedValue(response({
+        violations: [], recommendation: "none", confidence: 0.1, rationale: "Clean",
+      }));
+      vi.stubGlobal("fetch", fetchMock);
+      const ctx = context({
+        settings: {
+          serviceUrl: "https://moderation.example",
+          serverRuleCheckMode: mode,
+          serverRuleForumAllowlist: allowlist,
+        },
+      });
+
+      await new Plugin(ctx).handleEvent(event({
+        context: {
+          server: { rules: serverRules },
+          channel: { uniqueName: "cats", rules: forumRules, pluginEnabled },
+        },
+      }));
+
+      expect(fetchMock).toHaveBeenCalledOnce();
+      const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+      expect([
+        ...new Set(body.rules.map((rule: { scope: string }) => rule.scope)),
+      ]).toEqual(expectedScopes);
+    }
+  );
+
+  it("skips when neither server nor forum rule checking applies", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await new Plugin(context({
+      settings: {
+        serviceUrl: "https://moderation.example",
+        serverRuleCheckMode: "allowlist",
+        serverRuleForumAllowlist: "dogs",
+      },
+    })).handleEvent(event());
+
+    expect(result).toEqual({
+      success: true,
+      result: { skipped: "server-rule-checking-off" },
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("creates one consolidated report with canonical server and forum rules", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(response({
+      violations: [
+        { scope: "server", ruleId: "server:0" },
+        { scope: "channel", ruleId: "channel:1" },
+        { scope: "channel", ruleId: "channel:1" },
+      ],
+      recommendation: "edit",
+      confidence: 0.88,
+      rationale: "The post needs changes",
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const ctx = context();
+
+    const result = await new Plugin(ctx).handleEvent(event({
+      context: {
+        server: { rules: serverRules },
+        channel: { uniqueName: "cats", rules: forumRules, pluginEnabled: true },
+      },
+    }));
+
+    expect(result).toEqual({ success: true, result: { reported: true, confidence: 0.88 } });
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(ctx.reportContentAsBot).toHaveBeenCalledOnce();
+    expect(ctx.reportContentAsBot).toHaveBeenCalledWith(expect.objectContaining({
+      selectedServerRules: ["No spam"],
+      selectedForumRules: ["No spoilers"],
+    }));
+  });
+
+  it("reads manifest defaults from nested server settings with flat overrides", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(response({
+      violations: [], recommendation: "none", confidence: 0.1, rationale: "Clean",
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const ctx = context({
+      settings: {
+        server: {
+          serviceUrl: "https://default.example",
+          serverRuleCheckMode: "off",
+          confidenceThreshold: 0.9,
+        },
+        serviceUrl: "https://override.example/",
+        serverRuleCheckMode: "all_forums",
+      },
+    });
+
+    await new Plugin(ctx).handleEvent(event());
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://override.example/moderate",
+      expect.any(Object)
+    );
   });
 
   it("marks provider outages retryable", async () => {
