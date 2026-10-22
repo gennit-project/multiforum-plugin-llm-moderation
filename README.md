@@ -1,8 +1,9 @@
 # Multiforum LLM Moderation Plugin
 
 Experimental, report-only moderation plugin. For `comment.created`, it sends
-the comment and canonical server rules to an external moderation service. A
-valid, above-threshold verdict creates one report for human moderators.
+the comment and the applicable canonical server and forum rules to an external
+moderation service in one request. A valid, above-threshold verdict creates one
+consolidated report for human moderators.
 
 The provider API key belongs to the external service and is never configured in
 this plugin. Server-rule checking defaults to `off`.
@@ -14,5 +15,5 @@ npm install
 npm run ci
 ```
 
-This first slice intentionally excludes discussion events, edits, channel-rule
-evaluation, asynchronous processing, deployment, and registry publication.
+Discussion events, edits, asynchronous processing, deployment, and registry
+publication remain outside the current implementation.

@@ -24,7 +24,11 @@ type EventEnvelope = {
     author?: { isBot?: boolean };
     context?: {
       server?: { rules?: unknown };
-      channel?: { uniqueName?: string };
+      channel?: {
+        uniqueName?: string;
+        rules?: unknown;
+        pluginEnabled?: boolean;
+      };
       comment?: { id?: string; text?: string } | null;
     };
   };
@@ -57,6 +61,19 @@ const strings = (value: unknown): string[] =>
 
 const numberSetting = (value: unknown, fallback: number): number =>
   typeof value === "number" && Number.isFinite(value) ? value : fallback;
+
+const record = (value: unknown): Record<string, unknown> =>
+  value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+
+const serverSettings = (value: unknown): Record<string, unknown> => {
+  const settings = record(value);
+  const flatOverrides = Object.fromEntries(
+    Object.entries(settings).filter(([key]) => key !== "server" && key !== "channel")
+  );
+  return { ...record(settings.server), ...flatOverrides };
+};
 
 const parseAllowlist = (value: unknown): string[] => {
   if (Array.isArray(value)) return strings(value);
@@ -92,12 +109,16 @@ export default class LlmModerationPlugin {
       return { success: true, result: { skipped: "bot-authored" } };
     }
 
-    const settings = this.context.settings || {};
+    const settings = serverSettings(this.context.settings);
     const channelUniqueName = event.payload?.context?.channel?.uniqueName || "";
     const mode = settings.serverRuleCheckMode || "off";
     const allowlist = parseAllowlist(settings.serverRuleForumAllowlist);
-    const enabled = mode === "all_forums" || (mode === "allowlist" && allowlist.includes(channelUniqueName));
-    if (!enabled) {
+    const serverRulesEnabled =
+      mode === "all_forums" ||
+      (mode === "allowlist" && allowlist.includes(channelUniqueName));
+    const channelRulesEnabled =
+      event.payload?.context?.channel?.pluginEnabled === true;
+    if (!serverRulesEnabled && !channelRulesEnabled) {
       return { success: true, result: { skipped: "server-rule-checking-off" } };
     }
 
@@ -107,13 +128,23 @@ export default class LlmModerationPlugin {
       return { success: false, error: "comment.created payload is missing comment content", retryable: false };
     }
 
-    const rules: ServiceRule[] = strings(event.payload?.context?.server?.rules).map((text, index) => ({
-      scope: "server",
-      id: `server:${index}`,
-      text,
-    }));
+    const serverRules: ServiceRule[] = serverRulesEnabled
+      ? strings(event.payload?.context?.server?.rules).map((text, index) => ({
+          scope: "server",
+          id: `server:${index}`,
+          text,
+        }))
+      : [];
+    const channelRules: ServiceRule[] = channelRulesEnabled
+      ? strings(event.payload?.context?.channel?.rules).map((text, index) => ({
+          scope: "channel",
+          id: `channel:${index}`,
+          text,
+        }))
+      : [];
+    const rules = [...serverRules, ...channelRules];
     if (rules.length === 0) {
-      return { success: true, result: { skipped: "no-server-rules" } };
+      return { success: true, result: { skipped: "no-applicable-rules" } };
     }
 
     const serviceUrl = typeof settings.serviceUrl === "string" ? settings.serviceUrl.replace(/\/$/, "") : "";
@@ -176,22 +207,32 @@ export default class LlmModerationPlugin {
 
     const canonicalRules = new Map(rules.map(rule => [`${rule.scope}:${rule.id}`, rule.text]));
     const selectedServerRules: string[] = [];
+    const selectedForumRules: string[] = [];
     const seen = new Set<string>();
     for (const violation of verdict.violations) {
-      if (!violation || violation.scope !== "server" || typeof violation.ruleId !== "string") continue;
+      if (
+        !violation ||
+        !["server", "channel"].includes(violation.scope) ||
+        typeof violation.ruleId !== "string"
+      ) continue;
       const key = `${violation.scope}:${violation.ruleId}`;
       const canonical = canonicalRules.get(key);
       if (canonical && !seen.has(key)) {
         seen.add(key);
-        selectedServerRules.push(canonical);
+        if (violation.scope === "server") {
+          selectedServerRules.push(canonical);
+        } else {
+          selectedForumRules.push(canonical);
+        }
       }
     }
 
     const confidenceThreshold = numberSetting(settings.confidenceThreshold, 0.7);
-    if (verdict.confidence < confidenceThreshold || selectedServerRules.length === 0) {
+    const validCitationCount = selectedServerRules.length + selectedForumRules.length;
+    if (verdict.confidence < confidenceThreshold || validCitationCount === 0) {
       return {
         success: true,
-        result: { reported: false, confidence: verdict.confidence, validCitationCount: selectedServerRules.length },
+        result: { reported: false, confidence: verdict.confidence, validCitationCount },
       };
     }
     if (!this.context.reportContentAsBot) {
@@ -208,7 +249,7 @@ export default class LlmModerationPlugin {
       contentType: "comment",
       contentId: commentId,
       reportText,
-      selectedForumRules: [],
+      selectedForumRules,
       selectedServerRules,
       botName: typeof settings.botName === "string" ? settings.botName : "llm-moderator",
       profileId: typeof settings.profileId === "string" ? settings.profileId : undefined,
