@@ -8,7 +8,7 @@ describe("plugin manifest", () => {
     expect(manifest.id).toMatch(/^[a-z0-9-]+$/);
     expect(manifest.version).toMatch(/^\d+\.\d+\.\d+/);
     expect(manifest.entry).toBe("dist/index.js");
-    expect(manifest.events.length).toBeGreaterThan(0);
+    expect(manifest.events).toEqual(["comment.created", "comment.edited"]);
   });
 
   it("declares source and compatibility metadata for registry consumers", () => {

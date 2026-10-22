@@ -3,8 +3,11 @@ import Plugin from "../index.js";
 
 const serverRules = ["No spam", "No threats"];
 const forumRules = ["Stay on topic", "No spoilers"];
-const event = (overrides: Record<string, unknown> = {}) => ({
-  type: "comment.created",
+const event = (
+  overrides: Record<string, unknown> = {},
+  type = "comment.created"
+) => ({
+  type,
   payload: {
     commentId: "comment-1",
     commentText: "Buy now",
@@ -60,6 +63,54 @@ describe("LLM moderation plugin", () => {
         selectedServerRules: ["No spam"],
       }),
     });
+  });
+
+  it("moderates edited comment text and reports against the same comment", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(response({
+      violations: [{ scope: "server", ruleId: "server:0" }],
+      recommendation: "edit",
+      confidence: 0.86,
+      rationale: "The edited text violates the rule",
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const ctx = context();
+    const editedEvent = event({
+      commentText: "Edited spam text",
+      context: {
+        server: { rules: serverRules },
+        channel: {
+          uniqueName: "cats",
+          rules: forumRules,
+          pluginEnabled: false,
+        },
+        comment: { id: "comment-1", text: "Edited spam text" },
+      },
+    }, "comment.edited");
+
+    const result = await new Plugin(ctx).handleEvent(editedEvent);
+
+    expect(result).toEqual({ success: true, result: { reported: true, confidence: 0.86 } });
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).content).toEqual({
+      type: "comment",
+      id: "comment-1",
+      body: "Edited spam text",
+    });
+    expect(ctx.reportContentAsBot).toHaveBeenCalledOnce();
+    expect(ctx.reportContentAsBot).toHaveBeenCalledWith(expect.objectContaining({
+      contentType: "comment",
+      contentId: "comment-1",
+      selectedServerRules: ["No spam"],
+    }));
+  });
+
+  it("skips unsupported events without calling the service", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await new Plugin(context()).handleEvent(event({}, "comment.deleted"));
+
+    expect(result).toEqual({ success: true, result: { skipped: "unsupported-event" } });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("does not report hallucinated or mis-scoped citations", async () => {

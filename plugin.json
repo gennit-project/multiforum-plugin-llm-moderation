@@ -1,10 +1,10 @@
 {
   "id": "llm-moderation",
   "name": "LLM Moderation",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Experimental report-only moderation using an external LLM service",
   "entry": "dist/index.js",
-  "events": ["comment.created"],
+  "events": ["comment.created", "comment.edited"],
   "secrets": [
     {
       "key": "MODERATION_SERVICE_API_KEY",
@@ -57,7 +57,7 @@
   "documentation": { "readmePath": "README.md" },
   "source": {
     "repoUrl": "https://github.com/gennit-project/multiforum-plugin-llm-moderation",
-    "releaseNotesUrl": "https://github.com/gennit-project/multiforum-plugin-llm-moderation/releases/tag/v0.2.0"
+    "releaseNotesUrl": "https://github.com/gennit-project/multiforum-plugin-llm-moderation/releases/tag/v0.3.0"
   },
   "compatibility": { "minServerVersion": "1.0.0", "apiVersion": "1" }
 }
