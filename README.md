@@ -5,6 +5,8 @@ Experimental, report-only moderation plugin. For `comment.created`,
 it sends the submitted content and the applicable canonical server and forum
 rules to an external moderation service in one request. A valid,
 above-threshold verdict creates one consolidated report for human moderators.
+The report includes the service's structured edit/remove recommendation,
+confidence, and rationale when the server runtime supports those fields.
 
 The provider API key belongs to the external service and is never configured in
 this plugin. Server-rule checking defaults to `off`.
@@ -16,5 +18,5 @@ npm install
 npm run ci
 ```
 
-Asynchronous processing, deployment, and registry publication remain outside
-the current implementation.
+Service deployment and registry publication remain outside the current
+implementation.

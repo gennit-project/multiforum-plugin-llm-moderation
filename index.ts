@@ -13,6 +13,9 @@ type HookContext = {
     botName: string;
     profileId?: string;
     profileLabel?: string;
+    recommendedAction?: "edit" | "remove";
+    recommendationConfidence?: number;
+    recommendationRationale?: string;
   }) => Promise<unknown>;
 };
 
@@ -279,6 +282,9 @@ export default class LlmModerationPlugin {
       botName: typeof settings.botName === "string" ? settings.botName : "llm-moderator",
       profileId: typeof settings.profileId === "string" ? settings.profileId : undefined,
       profileLabel: typeof settings.profileLabel === "string" ? settings.profileLabel : undefined,
+      recommendedAction: verdict.recommendation === "none" ? undefined : verdict.recommendation,
+      recommendationConfidence: verdict.confidence,
+      recommendationRationale: verdict.rationale.trim() || undefined,
     });
 
     return { success: true, result: { reported: true, confidence: verdict.confidence } };
