@@ -58,6 +58,11 @@ const CONTENT_EVENTS = new Set([
   "comment.created",
   "comment.edited",
   "discussionChannel.created",
+  "discussionChannel.edited",
+]);
+const DISCUSSION_EVENTS = new Set([
+  "discussionChannel.created",
+  "discussionChannel.edited",
 ]);
 
 const strings = (value: unknown): string[] =>
@@ -131,7 +136,7 @@ export default class LlmModerationPlugin {
       return { success: true, result: { skipped: "server-rule-checking-off" } };
     }
 
-    const isDiscussion = event.type === "discussionChannel.created";
+    const isDiscussion = DISCUSSION_EVENTS.has(event.type);
     const contentType = isDiscussion ? "discussion" : "comment";
     const contentId = isDiscussion
       ? event.payload?.discussionId || event.payload?.context?.discussion?.id

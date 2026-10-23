@@ -25,8 +25,11 @@ const event = (
   },
 });
 
-const discussionEvent = (overrides: Record<string, unknown> = {}) => ({
-  type: "discussionChannel.created",
+const discussionEvent = (
+  overrides: Record<string, unknown> = {},
+  type = "discussionChannel.created"
+) => ({
+  type,
   payload: {
     discussionId: "discussion-1",
     discussionTitle: "A suspicious offer",
@@ -153,6 +156,50 @@ describe("LLM moderation plugin", () => {
       contentType: "discussion",
       contentId: "discussion-1",
       selectedServerRules: ["No spam"],
+      selectedForumRules: ["Stay on topic"],
+    }));
+  });
+
+  it("moderates an edited discussion and reports against the same discussion", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(response({
+      violations: [{ scope: "channel", ruleId: "channel:0" }],
+      recommendation: "edit",
+      confidence: 0.89,
+      rationale: "The edited discussion violates the forum rule",
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const ctx = context();
+    const editedEvent = discussionEvent({
+      discussionTitle: "Edited suspicious offer",
+      discussionBody: "Edited spam body",
+      context: {
+        server: { rules: serverRules },
+        channel: {
+          uniqueName: "cats",
+          rules: forumRules,
+          pluginEnabled: true,
+        },
+        discussion: {
+          id: "discussion-1",
+          title: "Edited suspicious offer",
+          body: "Edited spam body",
+        },
+      },
+    }, "discussionChannel.edited");
+
+    const result = await new Plugin(ctx).handleEvent(editedEvent);
+
+    expect(result).toEqual({ success: true, result: { reported: true, confidence: 0.89 } });
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).content).toEqual({
+      type: "discussion",
+      id: "discussion-1",
+      title: "Edited suspicious offer",
+      body: "Edited spam body",
+    });
+    expect(ctx.reportContentAsBot).toHaveBeenCalledOnce();
+    expect(ctx.reportContentAsBot).toHaveBeenCalledWith(expect.objectContaining({
+      contentType: "discussion",
+      contentId: "discussion-1",
       selectedForumRules: ["Stay on topic"],
     }));
   });
