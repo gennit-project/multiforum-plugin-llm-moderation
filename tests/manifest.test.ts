@@ -12,6 +12,7 @@ describe("plugin manifest", () => {
       "comment.created",
       "comment.edited",
       "discussionChannel.created",
+      "discussionChannel.edited",
     ]);
   });
 
