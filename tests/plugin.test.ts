@@ -88,6 +88,30 @@ describe("LLM moderation plugin", () => {
         contentId: "comment-1",
         selectedForumRules: [],
         selectedServerRules: ["No spam"],
+        recommendedAction: "remove",
+        recommendationConfidence: 0.91,
+        recommendationRationale: "Promotional spam",
+      }),
+    });
+  });
+
+  it("omits an action recommendation when the service recommends none", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response({
+      violations: [{ scope: "server", ruleId: "server:0" }],
+      recommendation: "none",
+      confidence: 0.91,
+      rationale: "A moderator should review the context",
+    })));
+    const ctx = context();
+
+    const result = await new Plugin(ctx).handleEvent(event());
+
+    expect({ result, report: ctx.reportContentAsBot.mock.calls[0][0] }).toEqual({
+      result: { success: true, result: { reported: true, confidence: 0.91 } },
+      report: expect.objectContaining({
+        recommendedAction: undefined,
+        recommendationConfidence: 0.91,
+        recommendationRationale: "A moderator should review the context",
       }),
     });
   });
