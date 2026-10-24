@@ -1,6 +1,6 @@
 {
   "name": "@multiforum/llm-moderation",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Experimental Multiforum moderation plugin backed by an external LLM service",
   "type": "module",
   "main": "dist/index.js",
