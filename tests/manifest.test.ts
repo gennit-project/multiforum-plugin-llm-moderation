@@ -22,4 +22,23 @@ describe("plugin manifest", () => {
     expect(manifest.compatibility.minServerVersion).toMatch(/^\d+\.\d+\.\d+/);
     expect(manifest.compatibility.apiVersion).toBe("1");
   });
+
+  it("uses the forum picker for an allowlist-only server setting", () => {
+    const serverFields = manifest.ui.forms.server.flatMap(
+      (section: { fields: Array<Record<string, unknown>> }) => section.fields
+    );
+    const allowlistField = serverFields.find(
+      (field: { key?: string }) => field.key === "serverRuleForumAllowlist"
+    );
+
+    expect(manifest.settingsDefaults.server.serverRuleForumAllowlist).toEqual([]);
+    expect(allowlistField).toMatchObject({
+      type: "forum-multiselect",
+      required: true,
+      visibleWhen: {
+        key: "serverRuleCheckMode",
+        equals: "allowlist",
+      },
+    });
+  });
 });

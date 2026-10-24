@@ -1,7 +1,7 @@
 {
   "id": "llm-moderation",
   "name": "LLM Moderation",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Experimental report-only moderation using an external LLM service",
   "entry": "dist/index.js",
   "events": ["comment.created", "comment.edited", "discussionChannel.created", "discussionChannel.edited"],
@@ -17,7 +17,7 @@
     "server": {
       "serviceUrl": "",
       "serverRuleCheckMode": "off",
-      "serverRuleForumAllowlist": "[]",
+      "serverRuleForumAllowlist": [],
       "model": "gpt-4o-mini",
       "temperature": 0,
       "maxTokens": 800,
@@ -35,12 +35,26 @@
           "fields": [
             { "type": "text", "key": "serviceUrl", "label": "Service URL", "required": true },
             { "type": "secret", "key": "MODERATION_SERVICE_API_KEY", "label": "Service API key", "required": true },
-            { "type": "select", "key": "serverRuleCheckMode", "label": "Server rule checking", "options": [
-              { "label": "Off", "value": "off" },
-              { "label": "All forums", "value": "all_forums" },
-              { "label": "Allowlist", "value": "allowlist" }
-            ]},
-            { "type": "textarea", "key": "serverRuleForumAllowlist", "label": "Forum allowlist (JSON or comma-separated)" },
+            {
+              "type": "select",
+              "key": "serverRuleCheckMode",
+              "label": "Server rule checking",
+              "description": "Choose where the server-wide rules are evaluated. Forum-specific rules are enabled separately in each forum.",
+              "options": [
+                { "label": "Off", "value": "off" },
+                { "label": "All forums", "value": "all_forums" },
+                { "label": "Selected forums", "value": "allowlist" }
+              ]
+            },
+            {
+              "type": "forum-multiselect",
+              "key": "serverRuleForumAllowlist",
+              "label": "Forums checked against server rules",
+              "description": "Only the selected forums are evaluated against server-wide rules.",
+              "placeholder": "Select forums...",
+              "required": true,
+              "visibleWhen": { "key": "serverRuleCheckMode", "equals": "allowlist" }
+            },
             { "type": "number", "key": "confidenceThreshold", "label": "Confidence threshold", "min": 0, "max": 1, "step": 0.05 }
           ]
         }
@@ -57,7 +71,7 @@
   "documentation": { "readmePath": "README.md" },
   "source": {
     "repoUrl": "https://github.com/gennit-project/multiforum-plugin-llm-moderation",
-    "releaseNotesUrl": "https://github.com/gennit-project/multiforum-plugin-llm-moderation/releases/tag/v0.6.0"
+    "releaseNotesUrl": "https://github.com/gennit-project/multiforum-plugin-llm-moderation/releases/tag/v0.7.0"
   },
   "compatibility": { "minServerVersion": "1.0.0", "apiVersion": "1" }
 }

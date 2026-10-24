@@ -453,7 +453,7 @@ describe("LLM moderation plugin", () => {
     expect(result).toEqual({ success: false, error: "network down", retryable: true });
   });
 
-  it("supports a manually configured forum allowlist", async () => {
+  it("supports a forum allowlist selected through the settings form", async () => {
     const fetchMock = vi.fn().mockResolvedValue(response({
       violations: [], recommendation: "none", confidence: 0.1, rationale: "Clean",
     }));
@@ -462,7 +462,7 @@ describe("LLM moderation plugin", () => {
       settings: {
         serviceUrl: "https://moderation.example/",
         serverRuleCheckMode: "allowlist",
-        serverRuleForumAllowlist: "cats,dogs",
+        serverRuleForumAllowlist: ["cats", "dogs"],
       },
     });
 
