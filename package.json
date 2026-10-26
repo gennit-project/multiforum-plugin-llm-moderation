@@ -10,6 +10,7 @@
     "build": "tsc -p tsconfig.json",
     "test": "vitest run --coverage",
     "validate:manifest": "node scripts/validate-manifest.mjs",
+    "validate:release": "node scripts/release-version.mjs",
     "bundle": "node scripts/create-bundle.mjs",
     "ci": "npm run validate:manifest && npm run test && npm run build && npm run bundle"
   },

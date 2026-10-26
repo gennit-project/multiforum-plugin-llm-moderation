@@ -1,35 +1,89 @@
-name: Publish Release
+name: Release plugin
 
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Confirm the version declared in plugin.json and package.json
+        required: true
+        type: string
 
 permissions:
   contents: write
 
+concurrency:
+  group: llm-moderation-plugin-release
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: ubuntu-latest
+    environment: release
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Require the reviewed default branch
+        if: ${{ github.ref != 'refs/heads/main' }}
+        run: |
+          echo "::error::Plugin releases must run from main."
+          exit 1
+      - name: Check out source with tag history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Node
+        uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-      - run: npm install
-      - run: npm run ci
-      - name: Verify tag matches plugin version
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Validate version and source metadata
+        id: version
+        run: node scripts/release-version.mjs --expected "${{ inputs.version }}" >> "${GITHUB_OUTPUT}"
+      - name: Run CI and build release assets
+        run: npm run ci
+      - name: Refuse an existing immutable release
+        id: preflight
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
         run: |
-          VERSION="$(node -p "JSON.parse(require('fs').readFileSync('plugin.json', 'utf8')).version")"
-          test "$GITHUB_REF_NAME" = "v$VERSION"
+          set -euo pipefail
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            echo "::error::Release ${TAG} already exists and will not be overwritten."
+            exit 1
+          fi
+          if git rev-parse --verify --quiet "refs/tags/${TAG}" >/dev/null; then
+            tagged_commit="$(git rev-list -n 1 "${TAG}")"
+            if [[ "${tagged_commit}" != "${GITHUB_SHA}" ]]; then
+              echo "::error::Tag ${TAG} already points to ${tagged_commit} and will not be rewritten."
+              exit 1
+            fi
+            echo "create_tag=false" >> "${GITHUB_OUTPUT}"
+          else
+            echo "create_tag=true" >> "${GITHUB_OUTPUT}"
+          fi
+      - name: Create immutable tag
+        if: ${{ steps.preflight.outputs.create_tag == 'true' }}
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag --annotate "${TAG}" "${GITHUB_SHA}" --message "Release ${TAG} from ${GITHUB_SHA}"
+          git push origin "refs/tags/${TAG}"
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
         run: |
-          gh release create "$GITHUB_REF_NAME" \
-            out/*.tgz \
-            out/*.sha256 \
-            plugin.json \
-            --title "$GITHUB_REF_NAME" \
-            --generate-notes
+          gh release create "${TAG}" out/*.tgz out/*.sha256 plugin.json \
+            --verify-tag --title "${TAG}" --generate-notes \
+            --notes "Source commit: ${GITHUB_SHA}"
+      - name: Record release provenance
+        run: |
+          {
+            echo "### Plugin release"
+            echo "- Tag: \`${{ steps.version.outputs.tag }}\`"
+            echo "- Source commit: \`${GITHUB_SHA}\`"
+            echo "- CI and bundle validation: passed"
+          } >> "${GITHUB_STEP_SUMMARY}"
