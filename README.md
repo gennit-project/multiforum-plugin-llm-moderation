@@ -18,5 +18,16 @@ npm install
 npm run ci
 ```
 
-Service deployment and registry publication remain outside the current
-implementation.
+## Release
+
+The only supported release path is the **Release plugin** GitHub Actions
+workflow. Run it from `main`, enter the exact version declared by both
+`plugin.json` and `package.json`, and approve the protected `release`
+environment. The workflow runs the complete CI and bundle pipeline before it
+creates anything, refuses existing tags or releases, creates an annotated
+`v<version>` tag, and publishes the tarball, checksum, and manifest. The
+release and job summary record the immutable source commit.
+
+Do not create or move release tags manually. Configure required reviewers on
+the `release` environment so publication always has an explicit approval gate.
+Service deployment and registry publication are separate workflows.
