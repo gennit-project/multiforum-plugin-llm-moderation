@@ -2,6 +2,8 @@ import fs from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const manifest = JSON.parse(fs.readFileSync("plugin.json", "utf8"));
+const packageJson = JSON.parse(fs.readFileSync("package.json", "utf8"));
+const packageLock = JSON.parse(fs.readFileSync("package-lock.json", "utf8"));
 
 describe("plugin manifest", () => {
   it("describes a versioned Multiforum plugin package", () => {
@@ -23,22 +25,50 @@ describe("plugin manifest", () => {
     expect(manifest.compatibility.apiVersion).toBe("1");
   });
 
-  it("uses the forum picker for an allowlist-only server setting", () => {
+  it("versions governance as 0.8.0 consistently across the package, lockfile and manifest", () => {
+    expect(manifest.version).toBe("0.8.0");
+    expect(packageJson.version).toBe(manifest.version);
+    expect(packageLock.version).toBe(manifest.version);
+    expect(packageLock.packages[""].version).toBe(manifest.version);
+  });
+
+  it("exposes global server enforcement and a separate channel eligibility policy", () => {
     const serverFields = manifest.ui.forms.server.flatMap(
       (section: { fields: Array<Record<string, unknown>> }) => section.fields
     );
+    expect(serverFields.find((field: { key?: string }) => field.key === "serverRuleEnforcement"))
+      .toMatchObject({ type: "select", options: [
+        { value: "off" }, { value: "on" },
+      ] });
+    expect(serverFields.find((field: { key?: string }) => field.key === "channelRuleEligibility"))
+      .toMatchObject({ type: "select", options: [
+        { value: "all" }, { value: "none" }, { value: "allowlist" },
+      ] });
     const allowlistField = serverFields.find(
-      (field: { key?: string }) => field.key === "serverRuleForumAllowlist"
+      (field: { key?: string }) => field.key === "channelRuleAllowlist"
     );
 
-    expect(manifest.settingsDefaults.server.serverRuleForumAllowlist).toEqual([]);
     expect(allowlistField).toMatchObject({
       type: "forum-multiselect",
-      required: true,
       visibleWhen: {
-        key: "serverRuleCheckMode",
+        key: "channelRuleEligibility",
         equals: "allowlist",
       },
     });
+    // Empty allowlists intentionally deny every channel and remain valid config.
+    expect(allowlistField?.required).not.toBe(true);
+    expect(serverFields.some((field: { key?: string }) =>
+      ["serverRuleCheckMode", "serverRuleForumAllowlist"].includes(field.key || "")
+    )).toBe(false);
+    expect(manifest.ui.forms.channel).toEqual([]);
+  });
+
+  it("does not materialize governance defaults over an unmigrated legacy configuration", () => {
+    for (const key of [
+      "serverRuleEnforcement", "channelRuleEligibility", "channelRuleAllowlist",
+      "serverRuleCheckMode", "serverRuleForumAllowlist",
+    ]) {
+      expect(manifest.settingsDefaults.server).not.toHaveProperty(key);
+    }
   });
 });

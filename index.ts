@@ -102,6 +102,39 @@ const parseAllowlist = (value: unknown): string[] => {
   }
 };
 
+const serverRulesApply = (
+  settings: Record<string, unknown>,
+  channelUniqueName: string
+): boolean => {
+  // Explicit governance settings take precedence, including invalid values.
+  // Do not reinterpret a legacy server allowlist as channel eligibility.
+  if (Object.hasOwn(settings, "serverRuleEnforcement")) {
+    return settings.serverRuleEnforcement === "on";
+  }
+  const legacyMode = settings.serverRuleCheckMode || "off";
+  return legacyMode === "all_forums" || (
+    legacyMode === "allowlist" &&
+    parseAllowlist(settings.serverRuleForumAllowlist).includes(channelUniqueName)
+  );
+};
+
+const channelRulesEligible = (
+  settings: Record<string, unknown>,
+  channelUniqueName: string
+): boolean => {
+  // Absent policy preserves existing owner opt-in. A present, malformed policy
+  // must not silently grant eligibility.
+  const policy = Object.hasOwn(settings, "channelRuleEligibility")
+    ? settings.channelRuleEligibility
+    : "all";
+  if (policy === "all") return true;
+  if (policy !== "allowlist" || !channelUniqueName) return false;
+  const allowlist = settings.channelRuleAllowlist;
+  return Array.isArray(allowlist) &&
+    allowlist.every(item => typeof item === "string") &&
+    strings(allowlist).includes(channelUniqueName);
+};
+
 const isVerdict = (value: unknown): value is ServiceVerdict => {
   if (!value || typeof value !== "object") return false;
   const verdict = value as Partial<ServiceVerdict>;
@@ -128,13 +161,10 @@ export default class LlmModerationPlugin {
 
     const settings = serverSettings(this.context.settings);
     const channelUniqueName = event.payload?.context?.channel?.uniqueName || "";
-    const mode = settings.serverRuleCheckMode || "off";
-    const allowlist = parseAllowlist(settings.serverRuleForumAllowlist);
-    const serverRulesEnabled =
-      mode === "all_forums" ||
-      (mode === "allowlist" && allowlist.includes(channelUniqueName));
+    const serverRulesEnabled = serverRulesApply(settings, channelUniqueName);
     const channelRulesEnabled =
-      event.payload?.context?.channel?.pluginEnabled === true;
+      event.payload?.context?.channel?.pluginEnabled === true &&
+      channelRulesEligible(settings, channelUniqueName);
     if (!serverRulesEnabled && !channelRulesEnabled) {
       return { success: true, result: { skipped: "server-rule-checking-off" } };
     }

@@ -1,7 +1,7 @@
 {
   "id": "llm-moderation",
   "name": "LLM Moderation",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "description": "Experimental report-only moderation using an external LLM service",
   "entry": "dist/index.js",
   "events": ["comment.created", "comment.edited", "discussionChannel.created", "discussionChannel.edited"],
@@ -16,8 +16,6 @@
   "settingsDefaults": {
     "server": {
       "serviceUrl": "",
-      "serverRuleCheckMode": "off",
-      "serverRuleForumAllowlist": [],
       "model": "gpt-4o-mini",
       "temperature": 0,
       "maxTokens": 800,
@@ -36,23 +34,32 @@
             { "type": "text", "key": "serviceUrl", "label": "Service URL", "required": true },
             {
               "type": "select",
-              "key": "serverRuleCheckMode",
-              "label": "Server rule checking",
-              "description": "Choose where the server-wide rules are evaluated. Forum-specific rules are enabled separately in each forum.",
+              "key": "serverRuleEnforcement",
+              "label": "Server-rule enforcement",
+              "description": "When on, server rules apply in every forum. Forum owners cannot opt out. Defaults to off for new installations.",
               "options": [
                 { "label": "Off", "value": "off" },
-                { "label": "All forums", "value": "all_forums" },
-                { "label": "Selected forums", "value": "allowlist" }
+                { "label": "On for every forum", "value": "on" }
+              ]
+            },
+            {
+              "type": "select",
+              "key": "channelRuleEligibility",
+              "label": "Channel-rule eligibility",
+              "description": "Choose which forum owners may opt into checking their own forum rules. Eligibility does not enable enforcement automatically. Defaults to all forums.",
+              "options": [
+                { "label": "All forums", "value": "all" },
+                { "label": "No forums", "value": "none" },
+                { "label": "Allowlisted forums", "value": "allowlist" }
               ]
             },
             {
               "type": "forum-multiselect",
-              "key": "serverRuleForumAllowlist",
-              "label": "Forums checked against server rules",
-              "description": "Only the selected forums are evaluated against server-wide rules.",
+              "key": "channelRuleAllowlist",
+              "label": "Forums eligible for channel-rule enforcement",
+              "description": "Owners of these forums may opt into enforcing their forum rules. An empty list permits no forums. This does not affect server rules.",
               "placeholder": "Select forums...",
-              "required": true,
-              "visibleWhen": { "key": "serverRuleCheckMode", "equals": "allowlist" }
+              "visibleWhen": { "key": "channelRuleEligibility", "equals": "allowlist" }
             },
             { "type": "number", "key": "confidenceThreshold", "label": "Confidence threshold", "min": 0, "max": 1, "step": 0.05 }
           ]
@@ -70,7 +77,7 @@
   "documentation": { "readmePath": "README.md" },
   "source": {
     "repoUrl": "https://github.com/gennit-project/multiforum-plugin-llm-moderation",
-    "releaseNotesUrl": "https://github.com/gennit-project/multiforum-plugin-llm-moderation/releases/tag/v0.7.1"
+    "releaseNotesUrl": "https://github.com/gennit-project/multiforum-plugin-llm-moderation/releases/tag/v0.8.0"
   },
   "compatibility": { "minServerVersion": "1.0.0", "apiVersion": "1" }
 }
