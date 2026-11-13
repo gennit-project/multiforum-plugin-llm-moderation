@@ -58,7 +58,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe("rule governance", () => {
   const matrix = eventTypes.flatMap(type =>
-    ["on", "off"].flatMap(serverRuleEnforcement =>
+    ["on", "off", "allowlist"].flatMap(serverRuleEnforcement =>
       ["all", "none", "allowlist"].flatMap(channelRuleEligibility =>
         [true, false].flatMap(pluginEnabled =>
           ["cats", "dogs", "CATS", ""].map(uniqueName => ({
@@ -77,10 +77,11 @@ describe("rule governance", () => {
       );
       await checkScopes({
         serverRuleEnforcement,
+        serverRuleForumAllowlist: ["dogs"],
         channelRuleEligibility,
         channelRuleAllowlist: ["cats"],
       }, pluginEnabled, [
-        ...(serverRuleEnforcement === "on" ? ["server"] : []),
+        ...((serverRuleEnforcement === "on" || (serverRuleEnforcement === "allowlist" && uniqueName === "dogs")) ? ["server"] : []),
         ...(pluginEnabled && channelEligible ? ["channel"] : []),
       ], uniqueName, type);
     }
@@ -253,4 +254,11 @@ describe("legacy configuration compatibility", () => {
   it.each([undefined, null, "", "null", "{}", 123])("keeps nonmatching legacy allowlists disabled: %j", async value => {
     await checkScopes({ serverRuleCheckMode: "allowlist", serverRuleForumAllowlist: value }, false, []);
   });
+});
+
+it.each([undefined,null,'cats',[],['dogs'],['cats',1]])('fails closed for invalid or nonmatching explicit server allowlist %j',async list=>{
+  await checkScopes({serverRuleEnforcement:'allowlist',serverRuleForumAllowlist:list,channelRuleEligibility:'none'},true,[]);
+});
+it('keeps server scope independent from channel overrides',async()=>{
+  await checkScopes({server:{serverRuleEnforcement:'allowlist',serverRuleForumAllowlist:['dogs'],channelRuleEligibility:'none'},channel:{serverRuleForumAllowlist:['cats'],channelRuleEligibility:'all'}},true,[]);
 });

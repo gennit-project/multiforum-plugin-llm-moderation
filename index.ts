@@ -109,7 +109,12 @@ const serverRulesApply = (
   // Explicit governance settings take precedence, including invalid values.
   // Do not reinterpret a legacy server allowlist as channel eligibility.
   if (Object.hasOwn(settings, "serverRuleEnforcement")) {
-    return settings.serverRuleEnforcement === "on";
+    const list = settings.serverRuleForumAllowlist;
+    return settings.serverRuleEnforcement === "on" || (
+      settings.serverRuleEnforcement === "allowlist" && !!channelUniqueName &&
+      Array.isArray(list) && list.every(item => typeof item === "string") &&
+      strings(list).includes(channelUniqueName)
+    );
   }
   const legacyMode = settings.serverRuleCheckMode || "off";
   return legacyMode === "all_forums" || (

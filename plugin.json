@@ -36,11 +36,19 @@
               "type": "select",
               "key": "serverRuleEnforcement",
               "label": "Server-rule enforcement",
-              "description": "When on, server rules apply in every forum. Forum owners cannot opt out. Defaults to off for new installations.",
+              "description": "Choose all, no, or allowlisted forums for mandatory server rules. Forum eligibility and owner choices do not change this scope.",
               "options": [
                 { "label": "Off", "value": "off" },
-                { "label": "On for every forum", "value": "on" }
+                { "label": "All forums", "value": "on" },
+                { "label": "Allowlisted forums", "value": "allowlist" }
               ]
+            },
+            {
+              "type": "forum-multiselect",
+              "key": "serverRuleForumAllowlist",
+              "label": "Forums subject to server rules",
+              "description": "Independent of forum-rule eligibility. Empty means no forums.",
+              "visibleWhen": { "key": "serverRuleEnforcement", "equals": "allowlist" }
             },
             {
               "type": "select",

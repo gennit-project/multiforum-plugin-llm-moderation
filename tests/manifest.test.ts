@@ -38,7 +38,7 @@ describe("plugin manifest", () => {
     );
     expect(serverFields.find((field: { key?: string }) => field.key === "serverRuleEnforcement"))
       .toMatchObject({ type: "select", options: [
-        { value: "off" }, { value: "on" },
+        { value: "off" }, { value: "on" }, { value: "allowlist" },
       ] });
     expect(serverFields.find((field: { key?: string }) => field.key === "channelRuleEligibility"))
       .toMatchObject({ type: "select", options: [
@@ -58,7 +58,7 @@ describe("plugin manifest", () => {
     // Empty allowlists intentionally deny every channel and remain valid config.
     expect(allowlistField?.required).not.toBe(true);
     expect(serverFields.some((field: { key?: string }) =>
-      ["serverRuleCheckMode", "serverRuleForumAllowlist"].includes(field.key || "")
+      ["serverRuleCheckMode"].includes(field.key || "")
     )).toBe(false);
     expect(manifest.ui.forms.channel).toEqual([]);
   });

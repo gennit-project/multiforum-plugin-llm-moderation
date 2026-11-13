@@ -18,13 +18,15 @@ server-scoped settings:
 
 | Setting | Values | Behavior when absent |
 | --- | --- | --- |
-| `serverRuleEnforcement` | `on`, `off` | Server rules off, unless legacy settings are present |
+| `serverRuleEnforcement` | `on`, `off`, `allowlist` | Server rules off, unless legacy settings are present |
+| `serverRuleForumAllowlist` | Server-rule forum unique names | Empty list |
 | `channelRuleEligibility` | `all`, `none`, `allowlist` | All forums eligible |
 | `channelRuleAllowlist` | Array of forum unique names | Empty list |
 
 When `serverRuleEnforcement` is `on`, server rules apply in every forum,
 regardless of forum eligibility or owner opt-in. When it is `off`, no server
-rules are sent to the service.
+rules are sent to the service. `allowlist` checks only forums named in
+`serverRuleForumAllowlist`, independently of owner consent or eligibility.
 
 Channel rules require both owner opt-in (`context.channel.pluginEnabled ===
 true`) and server eligibility. `all` allows every forum to opt in, `none`
@@ -54,12 +56,13 @@ runtime defaults above avoid masking an existing saved policy on upgrade.
 Generic reconciliation must preserve legacy settings or require an explicit
 migration, rather than dropping the old fields and silently disabling rules.
 
-Before migration, the administrator must choose global server enforcement and
-the channel eligibility policy separately. A legacy server allowlist has no
-equivalent global toggle and must not be automatically mapped to global `on`
-or copied to the new channel allowlist. Save the chosen new settings and remove
-the legacy keys as part of a deliberate upgrade using a compatible backend,
-frontend, and plugin release. Do not apply new settings to an older plugin
+The admin UI preserves each legacy mode (`off` → `off`, `all_forums` →
+`on`, `allowlist` → `allowlist`) and its server-rule list. Only the legacy mode
+key is retired on save; `serverRuleForumAllowlist` stays server scope. The
+independent forum-rule eligibility policy defaults to all when absent, so
+existing owner opt-in (including the `bad_advice` pilot) is retained. Approval
+only adds eligibility and cannot change either owner consent or server scope.
+Use the coordinated backend, frontend, and plugin release. Do not apply new settings to an older plugin
 release that does not understand them. The governance-aware backend must reject
 new governance settings for plugin versions below 0.8.0, including pipeline pins.
 
